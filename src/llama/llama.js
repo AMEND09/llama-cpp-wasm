@@ -39,6 +39,13 @@ class LlamaCpp {
                     }
                     
                     break;
+                case action.ERROR:
+                    // Worker reported an error (init/runtime)
+                    console.error('Worker reported ERROR:', event.data.message);
+                    try {
+                        dispatchEvent(new CustomEvent('llama-error', { detail: event.data.message }));
+                    } catch (e) {}
+                    break;
             }
         };
 

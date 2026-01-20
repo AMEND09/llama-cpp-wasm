@@ -341,8 +341,8 @@
 
         const wasmConfig = {
             modulePaths: {
-                multiThread: new URL('./docs/llama-mt/llama.js', window.location.href).toString(),
-                singleThread: new URL('./docs/llama-st/llama.js', window.location.href).toString(),
+                multiThread: new URL('./llama-mt/llama.js', window.location.href).toString(),
+                singleThread: new URL('./llama-st/llama.js', window.location.href).toString(),
             },
             inference: {
                 ctx_size: 4096,

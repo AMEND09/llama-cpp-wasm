@@ -58,9 +58,42 @@ const initWorker = async (modelPath) => {
                 fsync: tty => console.log("fsynced stderr (EmscriptenRunnable does nothing in this case)")
             });
         }],
+        onAbort: (what) => {
+            try { postMessage({ event: action.ERROR, message: String(what) }); } catch (e) {}
+        }
     };
 
-    module = await Module(emscrModule);
+    try {
+        module = await Module(emscrModule);
+    } catch (err) {
+        postMessage({ event: action.ERROR, message: String(err) });
+        return;
+    }
+
+    // Preserve Emscripten's onmessage handler and wrap it so that
+    // our `{ event: ... }` messages are handled by the normal
+    // `addEventListener('message', ...)` handlers below, while other
+    // messages (Emscripten runtime messages with `funcName`) are
+    // delegated back to Emscripten's handler.
+    let emscriptenOnMessage = null;
+    if (typeof self.onmessage === 'function') {
+        emscriptenOnMessage = self.onmessage;
+    }
+
+    self.onmessage = (msg) => {
+        try {
+            if (msg && msg.data && Object.prototype.hasOwnProperty.call(msg.data, 'event')) {
+                // Our app-style message — leave it to addEventListener handlers
+                return;
+            }
+            // Delegate to Emscripten's handler for its own messages
+            if (typeof emscriptenOnMessage === 'function') {
+                emscriptenOnMessage(msg);
+            }
+        } catch (err) {
+            postMessage({ event: action.ERROR, message: String(err) });
+        }
+    };
 
     const initCallback = (bytes) => {
         // create vfs folder for storing model bins
@@ -116,12 +149,16 @@ const run_main = (
         args.push("--no-display-prompt");
     }
 
-    module['callMain'](args);
+    try {
+        module['callMain'](args);
+    } catch (err) {
+        postMessage({ event: action.ERROR, message: String(err) });
+        console.error('Runtime error in module:', err);
+    }
 
     postMessage({
         event: action.RUN_COMPLETED
-    });
-} 
+    });} 
 
 // Worker Events
 self.addEventListener('message', (e) => {

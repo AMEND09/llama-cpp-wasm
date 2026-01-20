@@ -25,6 +25,42 @@ Once build is complete you can find `llama.cpp` built in `dist/llama-st` and `di
 
 Basically, you can copy/paste `dist/llama-st` or `dist/llama-mt` directory after build to your project and use as vanilla JavaScript library/module.
 
+### Deploy to GitHub Pages ✅
+
+To host the demo on GitHub Pages from this repository's `docs/` folder (recommended):
+
+1. Build the project (creates the `docs/` assets):
+
+   ```bash
+   ./build-single-thread.sh
+   ./build-multi-thread.sh
+   ```
+
+2. Commit and push the `docs/` folder to the `main` branch.
+
+3. In the repository Settings → Pages, set the source to:
+   - Branch: `main`
+   - Folder: `/docs`
+
+4. Save and wait a minute — your site will be available at `https://<your-username>.github.io/<repo-name>/`.
+
+Notes:
+- Links in the `docs/` pages are relative so they will work under the repo subpath.
+- If you prefer automatic deployment, consider a GitHub Action that builds the site and pushes to the `gh-pages` branch.
+
+Serve the root demo under `docs/`:
+
+- This repository includes a `monitor.html` page that is a copy of the root `index.html`, adjusted to run from the `docs/` folder. When the Pages source is set to `main` branch `/docs` folder, open:
+
+  `https://<your-username>.github.io/<repo-name>/monitor.html`
+
+- If you'd rather use the root `index.html` as the site entry, set Pages source to the repository root (if GitHub Pages supports that for your repo), or move the root files into `docs/`.
+
+Changelog (this repo):
+- Fixed worker conflict that caused `invalid worker function to call: undefined` in browser workers by clearing Emscripten's global `onmessage` handler in the worker initializer. ✅
+- Replaced absolute-root links in `docs/` HTML with relative links so the demo works under `https://<username>.github.io/<repo>/`.
+
+
 
 **index.html**
 
