@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>aegis vision // GEO-LINKED</title>
+    
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+    
+    <!-- PocketBase SDK -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pocketbase/0.21.1/pocketbase.umd.min.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --phosphor-main: #2ddf5c; 
+            --phosphor-dim: #1a6b33;
+            --phosphor-alert: #ff3333;
+            --crt-bg: #050505;
+            --bezel: #222;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: #111;
+            font-family: 'VT323', monospace;
+            color: var(--phosphor-main);
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* Prevent body scroll */
+            text-shadow: 0 0 2px var(--phosphor-dim);
+        }
+
+        /* --- LAYOUT FIXES --- */
+        .main-chassis {
+            width: 96vw;
+            height: 96vh; /* Taller to fit screen */
+            background: #2a2a2a;
+            border-radius: 20px;
+            box-shadow: inset 0 0 10px #000, 0 0 50px rgba(0,0,0,0.8), inset 2px 2px 5px rgba(255,255,255,0.1);
+            display: grid;
+            grid-template-columns: 2.5fr 1fr; /* More space for video */
+            padding: 15px;
+            gap: 15px;
+            border: 4px solid #1a1a1a;
+            position: relative;
+            overflow: hidden; /* Contain children */
+        }
+
+        .monitor-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .crt-screen {
+            flex-grow: 1;
+            background: #000;
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+            border: 8px solid #111;
+            box-shadow: inset 0 0 20px rgba(0,0,0,1);
+        }
+
+        #videoFeed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.8;
+            filter: contrast(1.2) brightness(1.1) sepia(0.3) grayscale(0.2);
+        }
+
+        /* CRT EFFECTS */
+        .scanlines {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+            background-size: 100% 4px; pointer-events: none; z-index: 10;
+        }
+
+        .osd-overlay {
+            position: absolute; top: 15px; left: 20px; right: 20px; bottom: 15px;
+            pointer-events: none; z-index: 12;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+
+        .osd-top { display: flex; justify-content: space-between; font-size: 1.4em; }
+        .osd-bottom { font-size: 1.1em; text-align: right; }
+        
+        .rec-indicator { color: var(--phosphor-alert); display: none; animation: blink 1s steps(1) infinite; }
+        .rec-indicator.active { display: block; }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* --- CONTROLS FIXES --- */
+        .control-panel {
+            background: #1a1a1a; border-radius: 10px; padding: 10px;
+            display: flex; flex-direction: column; gap: 8px;
+            border: 2px solid #000; box-shadow: inset 0 0 10px #000; 
+            height: 100%; /* Fill grid cell */
+            overflow: hidden; /* Prevent outer scroll */
+        }
+
+        h2 { 
+            margin: 0; border-bottom: 2px dashed var(--phosphor-dim); 
+            padding-bottom: 2px; text-transform: uppercase; 
+            font-size: 1.1em; color: #ddd; flex-shrink: 0; 
+        }
+
+        .input-group { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+        label { color: #888; font-size: 0.8em; text-transform: uppercase; }
+
+        input[type="text"], input[type="password"], textarea, select {
+            background: #000; border: 1px solid #444; color: var(--phosphor-main);
+            font-family: 'VT323', monospace; font-size: 0.9em; padding: 4px; resize: none;
+        }
+        
+        textarea:focus, input:focus, select:focus { outline: none; border-color: var(--phosphor-main); }
+
+        .btn-deck { display: flex; gap: 5px; margin-top: 5px; flex-shrink: 0; }
+
+        button {
+            flex: 1; background: #333; border: 2px solid #555;
+            border-bottom: 3px solid #111; border-right: 3px solid #111;
+            color: #ccc; font-family: 'VT323', monospace; font-size: 1em;
+            padding: 6px; cursor: pointer; text-transform: uppercase; transition: all 0.1s;
+        }
+        button:active { transform: translate(2px, 2px); border-bottom: 1px solid #111; border-right: 1px solid #111; }
+        button.primary { background: #004d1a; color: var(--phosphor-main); }
+        button.stop { background: #4d0000; color: #ff9999; }
+        button.secondary { background: #00334d; color: #99ccff; }
+
+        /* SCROLLABLE LOG AREA FIXED */
+        .incident-log {
+            flex-grow: 1; /* Take all remaining height */
+            min-height: 0; /* Allow shrinking */
+            background: #000; border: 1px solid #444; padding: 5px;
+            overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
+        }
+        /* Custom Scrollbar */
+        .incident-log::-webkit-scrollbar { width: 6px; }
+        .incident-log::-webkit-scrollbar-track { background: #111; }
+        .incident-log::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+        .incident-card {
+            border: 1px solid var(--phosphor-dim); padding: 4px; font-size: 0.85em;
+            cursor: pointer; transition: background 0.2s; display: flex; gap: 8px; flex-shrink: 0;
+        }
+        .incident-card:hover { background: rgba(45, 223, 92, 0.1); border-color: var(--phosphor-main); }
+
+        .incident-thumb { width: 40px; height: 30px; background: #222; object-fit: cover; border: 1px solid #333; }
+        .incident-info { display: flex; flex-direction: column; overflow: hidden; justify-content: center; }
+
+        .status-line {
+            font-size: 0.75em;
+            color: #666;
+            letter-spacing: 0.04em;
+        }
+        
+        /* --- FULLSCREEN GALLERY MODAL --- */
+        .gallery-modal {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #050505; z-index: 200; display: none;
+            flex-direction: column; padding: 20px;
+        }
+        .gallery-modal.open { display: flex; }
+
+        .gallery-header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 2px solid var(--phosphor-main); padding-bottom: 10px; margin-bottom: 20px;
+        }
+        
+        .gallery-search {
+            background: #000; border: 1px solid var(--phosphor-main); color: var(--phosphor-main);
+            padding: 10px; width: 400px; font-family: 'VT323', monospace; font-size: 1.5em;
+        }
+
+        .gallery-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px; overflow-y: auto; padding-right: 10px;
+        }
+
+        .gallery-item {
+            border: 1px solid #333; background: #111; cursor: pointer;
+            transition: transform 0.2s; display: flex; flex-direction: column;
+        }
+        .gallery-item:hover { transform: scale(1.05); border-color: var(--phosphor-main); }
+        .gallery-img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-bottom: 1px solid #333; }
+        .gallery-meta { padding: 5px; font-size: 0.8em; color: #aaa; background: #000; }
+        .gallery-reason { color: var(--phosphor-alert); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* --- REVIEW MODAL --- */
+        .modal {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 80%; height: 85%; background: #0a0a0a; border: 2px solid var(--phosphor-main);
+            z-index: 300; display: none; box-shadow: 0 0 100px rgba(0,0,0,1); flex-direction: column;
+        }
+        .modal.open { display: flex; }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #001a00; padding: 10px 20px; border-bottom: 2px solid var(--phosphor-main);
+            flex-shrink: 0; height: 50px;
+        }
+        .close-btn { flex: 0 0 40px; width: 40px; height: 40px; background: transparent; border: 2px solid var(--phosphor-main); color: var(--phosphor-main); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.5em; }
+        .close-btn:hover { background: var(--phosphor-main); color: #000; }
+        .modal-body { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+        .modal-img { width: 100%; max-height: 50vh; object-fit: contain; border: 1px solid #222; background: #000; }
+        .modal-details { font-size: 1.2em; line-height: 1.4; color: #ddd; padding: 15px; border: 1px solid #333; background: rgba(0,0,0,0.5); }
+
+        #canvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="main-chassis">
+        <div class="monitor-section">
+            <div class="crt-screen">
+                <div class="scanlines"></div>
+                <div class="osd-overlay">
+                    <div class="osd-top">
+                        <span class="rec-indicator">● REC</span>
+                        <span id="timestampOSD">--/--/---- --:--:--</span>
+                    </div>
+                    <div class="osd-bottom">
+                        <span id="camID">LOCATING...</span>
+                    </div>
+                </div>
+                <video id="videoFeed" autoplay playsinline muted></video>
+                <canvas id="canvas"></canvas>
+            </div>
+            <div style="text-align: center; color: #555; font-size: 0.8em; margin-top: 5px;">SONY TRINITRON SECURITY MONITOR // PVM-20M4U</div>
+        </div>
+
+        <div class="control-panel">
+            <h2>Authentication</h2>
+            <div class="input-group">
+                <input id="pbUrl" type="text" placeholder="URL (e.g. http://127.0.0.1:8090)">
+                <input id="pbEmail" type="text" placeholder="Email">
+                <input id="pbPass" type="password" placeholder="Password">
+                <button id="btnConnect" onclick="handleLogin()" style="font-size: 0.9em; padding: 4px;">CONNECT & SYNC</button>
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="input-group">
+                <label>WASM Model</label>
+                <select id="modelSelect">
+                    <option value="https://huggingface.co/ggml-org/SmolVLM2-256M-Video-Instruct-GGUF/resolve/main/SmolVLM2-256M-Video-Instruct-Q4_K_M.gguf">SmolVLM2 256M (Q4_K_M)</option>
+                    <option value="https://huggingface.co/ggml-org/SmolVLM2-500M-Video-Instruct-GGUF/resolve/main/SmolVLM2-500M-Video-Instruct-Q4_K_M.gguf">SmolVLM2 500M (Q4_K_M)</option>
+                    <option value="https://huggingface.co/ggml-org/SmolVLM2-2.2B-Video-Instruct-GGUF/resolve/main/SmolVLM2-2.2B-Video-Instruct-Q4_K_M.gguf">SmolVLM2 2.2B (Q4_K_M)</option>
+                </select>
+                <div id="modelStatus" class="status-line">MODEL: IDLE</div>
+                <div id="runtimeMode" class="status-line"></div>
+            </div>
+
+            <div class="input-group">
+                <label>Protocols</label>
+                <input type="file" id="pdfUpload" accept=".pdf, .txt" style="margin-bottom:2px;">
+                <textarea id="rulesText" rows="4" placeholder="1. No wearing glasses.&#10;2. No hats."></textarea>
+            </div>
+
+            <div class="input-group">
+                <label>Interval</label>
+                <select id="intervalSelect">
+                    <option value="1000">1.0s</option>
+                    <option value="2000" selected>2.0s</option>
+                    <option value="5000">5.0s</option>
+                </select>
+            </div>
+
+            <div class="btn-deck">
+                <button id="btnPower" class="primary">PWR ON / ARM</button>
+                <button id="btnArchive" class="secondary" onclick="openGallery()">VIEW ARCHIVE</button>
+            </div>
+            
+            <h2 style="margin-top: 10px;">Recent Alerts</h2>
+            <div class="incident-log" id="incidentLog">
+                <div style="color: #444; text-align: center; padding-top: 20px;">-- TAPE EMPTY --</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GALLERY MODAL -->
+    <div id="galleryModal" class="gallery-modal">
+        <div class="gallery-header">
+            <span style="font-size: 2em; color: var(--phosphor-main);">EVIDENCE ARCHIVE // DATABASE ACCESS</span>
+            <input type="text" id="gallerySearch" class="gallery-search" placeholder="SEARCH RECORDS..." onkeyup="filterGallery()">
+            <button class="close-btn" onclick="closeGallery()">X</button>
+        </div>
+        <div id="galleryGrid" class="gallery-grid">
+            <!-- Thumbnails injected here -->
+        </div>
+    </div>
+
+    <!-- REVIEW MODAL -->
+    <div id="reviewModal" class="modal">
+        <div class="modal-header">
+            <span id="modalTitle">VIOLATION REPORT</span>
+            <button class="close-btn" onclick="closeReview()">X</button>
+        </div>
+        <div class="modal-body">
+            <img id="modalImg" class="modal-img" src="">
+            <div id="modalText" class="modal-details"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // DOM
+        const video = document.getElementById('videoFeed');
+        const canvas = document.getElementById('canvas');
+        const btnPower = document.getElementById('btnPower');
+        const rulesText = document.getElementById('rulesText');
+        const incidentLog = document.getElementById('incidentLog');
+        const recIndicator = document.querySelector('.rec-indicator');
+        const timestampOSD = document.getElementById('timestampOSD');
+        const camID = document.getElementById('camID');
+        const reviewModal = document.getElementById('reviewModal');
+        const galleryModal = document.getElementById('galleryModal');
+        const pdfUpload = document.getElementById('pdfUpload');
+        const galleryGrid = document.getElementById('galleryGrid');
+        const modelSelect = document.getElementById('modelSelect');
+        const modelStatus = document.getElementById('modelStatus');
+        const runtimeMode = document.getElementById('runtimeMode');
+
+        // State
+        let stream = null;
+        let intervalId = null;
+        let isArmed = false;
+        let pb = null; 
+        let incidents = []; 
+        let isConnected = false;
+        let currentLocation = "UNKNOWN LOCATION";
+
+        const wasmConfig = {
+            modulePaths: {
+                multiThread: new URL('./docs/llama-mt/llama.js', window.location.href).toString(),
+                singleThread: new URL('./docs/llama-st/llama.js', window.location.href).toString(),
+            },
+            inference: {
+                ctx_size: 4096,
+                temp: 0.1,
+                top_k: 40,
+                top_p: 0.9,
+                n_predict: 128,
+                no_display_prompt: true,
+            },
+            capture: {
+                imageQuality: 0.6,
+            },
+        };
+
+        let llamaApp = null;
+        let LlamaCppClass = null;
+        let activeModelUrl = null;
+        let modelReady = false;
+        let modelLoading = false;
+        let isGenerating = false;
+        let currentResponse = "";
+        let pendingFrame = null;
+
+        const setModelStatus = (text) => {
+            modelStatus.textContent = text;
+        };
+
+        const loadLlamaModule = async () => {
+            if (LlamaCppClass) {
+                return LlamaCppClass;
+            }
+
+            if (globalThis.SharedArrayBuffer) {
+                runtimeMode.textContent = "RUNTIME: MULTI-THREAD WASM";
+                const module = await import(wasmConfig.modulePaths.multiThread);
+                LlamaCppClass = module.LlamaCpp;
+            } else {
+                runtimeMode.textContent = "RUNTIME: SINGLE-THREAD WASM";
+                const module = await import(wasmConfig.modulePaths.singleThread);
+                LlamaCppClass = module.LlamaCpp;
+            }
+
+            return LlamaCppClass;
+        };
+
+        const onMessageChunk = (text) => {
+            currentResponse += text;
+        };
+
+        const onComplete = () => {
+            const content = currentResponse.trim();
+            currentResponse = "";
+            recIndicator.classList.remove('active');
+            isGenerating = false;
+
+            if (!content || !pendingFrame || !isArmed) {
+                pendingFrame = null;
+                return;
+            }
+
+            const statusMatch = content.match(/STATUS:\s*(VIOLATION|SAFE)/i);
+            const isViolation = statusMatch ? statusMatch[1].toUpperCase() === "VIOLATION" : content.toUpperCase().includes("STATUS: VIOLATION");
+            let reason = "Detected forbidden item.";
+            const match = content.match(/REASON:\s*([\s\S]*?)(?=$)/i);
+            if (match && match[1]) reason = match[1].trim();
+            else if (isViolation) reason = content.substring(0, 150).replace(/STATUS: VIOLATION/i, '').trim();
+
+            if (isViolation) {
+                logIncident(reason, pendingFrame);
+            }
+
+            pendingFrame = null;
+        };
+
+        const ensureModelLoaded = async () => {
+            const url = modelSelect.value;
+            if (modelReady && llamaApp && activeModelUrl === url) {
+                return true;
+            }
+
+            if (modelLoading && activeModelUrl === url) {
+                return false;
+            }
+
+            modelReady = false;
+            modelLoading = true;
+            activeModelUrl = url;
+            setModelStatus("MODEL: LOADING...");
+
+            try {
+                const LlamaCpp = await loadLlamaModule();
+                if (llamaApp && llamaApp.worker) {
+                    llamaApp.worker.terminate();
+                }
+
+                llamaApp = new LlamaCpp(
+                    url,
+                    () => {
+                        modelReady = true;
+                        modelLoading = false;
+                        setModelStatus("MODEL: READY");
+                    },
+                    onMessageChunk,
+                    onComplete,
+                );
+                if (llamaApp.worker) {
+                    llamaApp.worker.addEventListener('error', (event) => {
+                        console.error("Model worker error", event);
+                        modelReady = false;
+                        modelLoading = false;
+                        setModelStatus("MODEL: WORKER ERROR");
+                    });
+                    llamaApp.worker.addEventListener('messageerror', (event) => {
+                        console.error("Model worker message error", event);
+                        modelReady = false;
+                        modelLoading = false;
+                        setModelStatus("MODEL: MESSAGE ERROR");
+                    });
+                }
+            } catch (err) {
+                console.error("Model load failed", err);
+                modelLoading = false;
+                setModelStatus("MODEL: LOAD FAILED");
+            }
+
+            return false;
+        };
+
+        modelSelect.addEventListener('change', () => {
+            modelReady = false;
+            modelLoading = false;
+            if (llamaApp && llamaApp.worker) {
+                llamaApp.worker.terminate();
+            }
+            llamaApp = null;
+            setModelStatus("MODEL: IDLE");
+            if (isArmed) {
+                ensureModelLoaded();
+            }
+        });
+
+        // --- GEOLOCATION INIT ---
+        function initLocation() {
+            if ("geolocation" in navigator) {
+                camID.innerText = "ACQUIRING SATELLITE...";
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude.toFixed(4);
+                        const lon = position.coords.longitude.toFixed(4);
+                        currentLocation = `LAT:${lat} LON:${lon}`;
+                        camID.innerText = `CAM-01 [${currentLocation}]`;
+                    }, 
+                    (error) => {
+                        console.error("Geo error:", error);
+                        camID.innerText = "CAM-01 [GPS SIGNAL LOST]";
+                        currentLocation = "GPS SIGNAL LOST";
+                    }
+                );
+            } else {
+                camID.innerText = "CAM-01 [NO GPS MODULE]";
+            }
+        }
+
+        // --- POCKETBASE LOGIC ---
+        async function handleLogin() {
+            let url = document.getElementById('pbUrl').value;
+            const email = document.getElementById('pbEmail').value;
+            const pass = document.getElementById('pbPass').value;
+
+            if (!url || !email || !pass) { alert("Please enter URL, Email and Password"); return; }
+            url = url.replace(/\/$/, ""); // Clean URL
+
+            pb = new PocketBase(url);
+            
+            let success = false;
+            // Try Admin then User
+            try {
+                await pb.admins.authWithPassword(email, pass);
+                console.log("Logged in as Admin");
+                success = true;
+            } catch (adminErr) {
+                try {
+                    await pb.collection('users').authWithPassword(email, pass);
+                    console.log("Logged in as User");
+                    success = true;
+                } catch (userErr) {
+                    alert("Authentication Failed! Checked both Admin and User accounts.");
+                    return;
+                }
+            }
+
+            if (success) {
+                isConnected = true;
+                document.getElementById('btnConnect').textContent = "CONNECTED";
+                document.getElementById('btnConnect').style.background = "#004d1a";
+                fetchIncidents();
+            }
+        }
+
+        async function fetchIncidents() {
+            if (!pb) return;
+            try {
+                const records = await pb.collection('incidents').getFullList({ sort: '-created' });
+                incidents = records.map(r => ({
+                    id: r.id,
+                    time: r.time_str,
+                    reason: r.reason,
+                    location: r.location,
+                    image: `${pb.baseUrl}/api/files/${r.collectionId}/${r.id}/${r.image}`,
+                    created: r.created
+                }));
+                renderIncidentLog();
+            } catch (err) {
+                console.error("Fetch error", err);
+            }
+        }
+
+        async function uploadIncidentToDB(reason, base64Image, timeStr) {
+            if (!pb || !isConnected) return;
+            const res = await fetch(base64Image);
+            const blob = await res.blob();
+            const file = new File([blob], "evidence.jpg");
+
+            const formData = new FormData();
+            formData.append('reason', reason);
+            formData.append('location', currentLocation); // USE GPS DATA
+            formData.append('time_str', timeStr);
+            formData.append('image', file);
+
+            try {
+                await pb.collection('incidents').create(formData);
+                fetchIncidents(); 
+            } catch (err) { console.error("Upload failed", err); }
+        }
+
+        // --- CORE FUNCTIONS ---
+        function updateClock() {
+            const now = new Date();
+            timestampOSD.innerText = now.toLocaleString('en-US').toUpperCase();
+        }
+        setInterval(updateClock, 1000);
+
+        if (pdfUpload) {
+            pdfUpload.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.type === 'application/pdf') {
+                    rulesText.value = "LOADING PDF DATA...";
+                    try {
+                        const arrayBuffer = await file.arrayBuffer();
+                        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                        let fullText = "";
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            fullText += textContent.items.map(item => item.str).join(' ') + "\n";
+                        }
+                        rulesText.value = fullText.trim();
+                    } catch (err) { rulesText.value = "ERROR READING PDF."; }
+                } else {
+                    rulesText.value = await file.text();
+                }
+            });
+        }
+
+        async function initCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = stream;
+            } catch (err) { alert("CAMERA ERROR: " + err.message); }
+        }
+
+        function captureFrame() {
+            if (!video.videoWidth) return null;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            return canvas.toDataURL('image/jpeg', wasmConfig.capture.imageQuality);
+        }
+
+        async function analyzeFrame() {
+            if (!isArmed || isGenerating) return;
+
+            const imageBase64 = captureFrame();
+            if (!imageBase64) return; 
+
+            await ensureModelLoaded();
+            if (!modelReady || !llamaApp) return;
+
+            const rules = rulesText.value.trim() || "NONE";
+
+            // STRICT PROMPT
+            const userPrompt = `
+                FORBIDDEN LIST:
+                ${rules}
+
+                INSTRUCTIONS:
+                You are a strict compliance checker.
+                1. If the image contains ANY item or action listed above, output STATUS: VIOLATION.
+                2. Do NOT judge safety. Only judge strict text matching.
+                3. If user says "No glasses" and person has glasses -> VIOLATION.
+                4. If the scene is unclear, output STATUS: SAFE.
+                
+                FORMAT:
+                STATUS: [VIOLATION or SAFE]
+                REASON: [State exactly which item from the list was found]
+            `;
+
+            try {
+                isGenerating = true;
+                currentResponse = "";
+                pendingFrame = imageBase64;
+                recIndicator.classList.add('active');
+
+                llamaApp.run({
+                    prompt: userPrompt,
+                    ...wasmConfig.inference,
+                });
+            } catch (err) {
+                console.error(err);
+                isGenerating = false;
+                recIndicator.classList.remove('active');
+            }
+        }
+
+        function logIncident(reason, image) {
+            const timeStr = new Date().toLocaleString();
+            
+            // 1. Upload to DB if connected
+            if (pb && isConnected) {
+                uploadIncidentToDB(reason, image, timeStr);
+            } else {
+                // Local only fallback
+                incidents.unshift({
+                    id: incidents.length + 1,
+                    time: timeStr,
+                    reason: reason,
+                    image: image,
+                    location: currentLocation
+                });
+                renderIncidentLog();
+            }
+            
+            video.style.boxShadow = "inset 0 0 50px #ff0000";
+            setTimeout(() => video.style.boxShadow = "none", 500);
+        }
+
+        function renderIncidentLog() {
+            incidentLog.innerHTML = '';
+            // Show recent in the sidebar
+            incidents.slice(0, 50).forEach(inc => {
+                const div = document.createElement('div');
+                div.className = 'incident-card';
+                div.innerHTML = `
+                    <img src="${inc.image}" class="incident-thumb">
+                    <div class="incident-info">
+                        <span class="violation-title">VIOLATION</span>
+                        <span class="time-stamp">${inc.time.split(',')[1] || inc.time}</span>
+                        <span style="font-size: 0.8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;">${inc.reason}</span>
+                    </div>
+                `;
+                div.onclick = () => openReview(inc);
+                incidentLog.appendChild(div);
+            });
+        }
+
+        // --- GALLERY ---
+        function openGallery() {
+            galleryModal.classList.add('open');
+            filterGallery();
+        }
+        function closeGallery() { galleryModal.classList.remove('open'); }
+
+        function filterGallery() {
+            const query = document.getElementById('gallerySearch').value.toLowerCase();
+            galleryGrid.innerHTML = '';
+
+            incidents.forEach(inc => {
+                const reasonText = (inc.reason || "").toLowerCase();
+                const timeText = (inc.time || "").toLowerCase();
+                if (reasonText.includes(query) || timeText.includes(query)) {
+                    const el = document.createElement('div');
+                    el.className = 'gallery-item';
+                    el.innerHTML = `
+                        <img src="${inc.image}" class="gallery-img">
+                        <div class="gallery-meta">
+                            <div style="color: #666">${inc.time}</div>
+                            <div class="gallery-reason">${inc.reason}</div>
+                        </div>
+                    `;
+                    el.onclick = () => openReview(inc);
+                    galleryGrid.appendChild(el);
+                }
+            });
+        }
+
+        // --- REVIEW MODAL ---
+        function openReview(inc) {
+            document.getElementById('modalTitle').innerText = `REPORT // ${inc.time}`;
+            document.getElementById('modalImg').src = inc.image;
+            document.getElementById('modalText').innerHTML = `
+                <strong style="color:var(--phosphor-main)">LOCATION:</strong> ${inc.location || 'UNKNOWN'}<br>
+                <strong style="color:var(--phosphor-main)">TIMESTAMP:</strong> ${inc.time}<br>
+                <hr style="border: 0; border-top: 1px dashed #444; margin: 10px 0;">
+                <strong style="color:var(--phosphor-alert)">DETECTED VIOLATION:</strong><br>
+                ${inc.reason}
+            `;
+            reviewModal.classList.add('open');
+        }
+        function closeReview() { reviewModal.classList.remove('open'); }
+
+        // --- INIT ---
+        btnPower.addEventListener('click', () => {
+            if (!isArmed) {
+                if (!stream) { alert("NO SIGNAL"); return; }
+                isArmed = true;
+                btnPower.textContent = "SYSTEM ARMED (STOP)";
+                btnPower.classList.add('stop'); btnPower.classList.remove('primary');
+                rulesText.disabled = true;
+                modelSelect.disabled = true;
+                ensureModelLoaded();
+                const ms = parseInt(document.getElementById('intervalSelect').value);
+                intervalId = setInterval(analyzeFrame, ms);
+            } else {
+                isArmed = false;
+                clearInterval(intervalId);
+                btnPower.textContent = "PWR ON / ARM";
+                btnPower.classList.remove('stop'); btnPower.classList.add('primary');
+                rulesText.disabled = false;
+                modelSelect.disabled = false;
+                recIndicator.classList.remove('active');
+            }
+        });
+
+        initCamera();
+        initLocation(); // Start GPS
+        loadLlamaModule();
+    </script>
+</body>
+</html>
