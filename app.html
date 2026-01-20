@@ -339,6 +339,24 @@
         let isConnected = false;
         let currentLocation = "UNKNOWN LOCATION";
 
+        const wasmConfig = {
+            modulePaths: {
+                multiThread: new URL('./docs/llama-mt/llama.js', window.location.href).toString(),
+                singleThread: new URL('./docs/llama-st/llama.js', window.location.href).toString(),
+            },
+            inference: {
+                ctx_size: 4096,
+                temp: 0.1,
+                top_k: 40,
+                top_p: 0.9,
+                n_predict: 128,
+                no_display_prompt: true,
+            },
+            capture: {
+                imageQuality: 0.6,
+            },
+        };
+
         let llamaApp = null;
         let LlamaCppClass = null;
         let activeModelUrl = null;
@@ -359,11 +377,11 @@
 
             if (globalThis.SharedArrayBuffer) {
                 runtimeMode.textContent = "RUNTIME: MULTI-THREAD WASM";
-                const module = await import('./docs/llama-mt/llama.js');
+                const module = await import(wasmConfig.modulePaths.multiThread);
                 LlamaCppClass = module.LlamaCpp;
             } else {
                 runtimeMode.textContent = "RUNTIME: SINGLE-THREAD WASM";
-                const module = await import('./docs/llama-st/llama.js');
+                const module = await import(wasmConfig.modulePaths.singleThread);
                 LlamaCppClass = module.LlamaCpp;
             }
 
@@ -385,7 +403,8 @@
                 return;
             }
 
-            const isViolation = content.toUpperCase().includes("STATUS: VIOLATION");
+            const statusMatch = content.match(/STATUS:\s*(VIOLATION|SAFE)/i);
+            const isViolation = statusMatch ? statusMatch[1].toUpperCase() === "VIOLATION" : content.toUpperCase().includes("STATUS: VIOLATION");
             let reason = "Detected forbidden item.";
             const match = content.match(/REASON:\s*([\s\S]*?)(?=$)/i);
             if (match && match[1]) reason = match[1].trim();
@@ -429,6 +448,18 @@
                     onMessageChunk,
                     onComplete,
                 );
+                if (llamaApp.worker) {
+                    llamaApp.worker.addEventListener('error', () => {
+                        modelReady = false;
+                        modelLoading = false;
+                        setModelStatus("MODEL: WORKER ERROR");
+                    });
+                    llamaApp.worker.addEventListener('messageerror', () => {
+                        modelReady = false;
+                        modelLoading = false;
+                        setModelStatus("MODEL: MESSAGE ERROR");
+                    });
+                }
             } catch (err) {
                 console.error("Model load failed", err);
                 modelLoading = false;
@@ -587,7 +618,7 @@
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            return canvas.toDataURL('image/jpeg', 0.6);
+            return canvas.toDataURL('image/jpeg', wasmConfig.capture.imageQuality);
         }
 
         async function analyzeFrame() {
@@ -626,12 +657,7 @@
 
                 llamaApp.run({
                     prompt: userPrompt,
-                    ctx_size: 4096,
-                    temp: 0.1,
-                    top_k: 40,
-                    top_p: 0.9,
-                    n_predict: 128,
-                    no_display_prompt: true,
+                    ...wasmConfig.inference,
                 });
             } catch (err) {
                 console.error(err);
