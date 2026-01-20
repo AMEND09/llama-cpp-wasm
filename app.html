@@ -449,12 +449,14 @@
                     onComplete,
                 );
                 if (llamaApp.worker) {
-                    llamaApp.worker.addEventListener('error', () => {
+                    llamaApp.worker.addEventListener('error', (event) => {
+                        console.error("Model worker error", event);
                         modelReady = false;
                         modelLoading = false;
                         setModelStatus("MODEL: WORKER ERROR");
                     });
-                    llamaApp.worker.addEventListener('messageerror', () => {
+                    llamaApp.worker.addEventListener('messageerror', (event) => {
+                        console.error("Model worker message error", event);
                         modelReady = false;
                         modelLoading = false;
                         setModelStatus("MODEL: MESSAGE ERROR");
